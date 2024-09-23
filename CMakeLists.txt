@@ -3,7 +3,7 @@ project(OpenCV_demo)
 
 set(CMAKE_CXX_STANDARD 20)
 
-if (VCPKG_TARGET_TRIPLET AND VCPKG_MANIFEST_FEATURES MATCHES "opencv")
+if (VCPKG_TARGET_TRIPLET)
     set(OpenCV_DIR "${VCPKG_INSTALLED_DIR}/x64-windows/share/opencv4")
 else ()
     set(OpenCV_DIR "$ENV{OpenCV_DIR}")
