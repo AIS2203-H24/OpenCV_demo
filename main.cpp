@@ -1,5 +1,6 @@
 
 #include <opencv2/opencv.hpp>
+#include <thread>
 
 using namespace cv;
 
@@ -49,15 +50,47 @@ int main() {
     const std::string windowTitle{"Display image"};
     namedWindow(windowTitle, WINDOW_AUTOSIZE);
 
+    std::mutex imageMutex, facesMutex;
+
     Mat image;
-    bool stop{false};
+    std::atomic_bool stop{false};
+    std::vector<Rect> faces;
+    std::atomic_bool faceDetected{false};
+
+    // WARNING, while this works and seems to be thread safe, it is not a pretty solution
+
+    std::jthread detectionThread([&] {
+        while (!stop) {
+
+            std::unique_lock lck(imageMutex);
+            if (image.empty()) continue;
+            Mat faceImage = image.clone();
+            lck.unlock();
+
+            const auto faceResult = faceDetect(faceImage);
+            std::lock_guard lck2(facesMutex);
+            faces = faceResult;
+            faceDetected = true;
+        }
+    });
+
+    std::vector<Rect> facesCopy;
 
     while (!stop) {
 
+        std::unique_lock lck(imageMutex);
         capture >> image;
+        lck.unlock();
 
-        // const auto faces = faceDetect(image);
-        // drawFaces(image, faces);
+        if (faceDetected) {
+            std::unique_lock lck2(facesMutex);
+            facesCopy = faces;
+            lck2.unlock();
+
+            faceDetected = false;
+        }
+
+        drawFaces(image, facesCopy);
 
         imshow(windowTitle, image);
 
