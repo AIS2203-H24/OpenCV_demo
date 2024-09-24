@@ -1,5 +1,4 @@
 
-
 #ifndef NETWORKING_DEMO_NETWORK_HELPER_HPP
 #define NETWORKING_DEMO_NETWORK_HELPER_HPP
 
@@ -9,7 +8,7 @@ enum class byte_order {
     LITTLE, BIG
 };
 
-std::array<unsigned char, 4> int_to_bytes(int n, byte_order order = byte_order::LITTLE) {
+inline std::array<unsigned char, 4> int_to_bytes(int n, byte_order order = byte_order::LITTLE) {
     std::array<unsigned char, 4> bytes{};
 
    if (order == byte_order::LITTLE) {

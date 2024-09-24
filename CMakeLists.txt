@@ -9,18 +9,20 @@ else ()
     set(OpenCV_DIR "$ENV{OpenCV_DIR}")
 endif ()
 
+find_package(OpenCV CONFIG REQUIRED)
+
 include(FetchContent)
 set(SIMPLE_SOCKET_BUILD_TESTS OFF)
 FetchContent_Declare(
         SimpleSocket
         GIT_REPOSITORY https://github.com/markaren/SimpleSocket.git
-        GIT_TAG 13380c962c9681d0e078d1d95fc092803ccc1bfe
+        GIT_TAG ac2ecd1089d18b66b84986d02fb2d788d09bec12
 )
 FetchContent_MakeAvailable(SimpleSocket)
 
-find_package(OpenCV CONFIG REQUIRED)
 
 file(COPY "${CMAKE_SOURCE_DIR}/data" DESTINATION "${CMAKE_BINARY_DIR}")
+
 
 add_executable(OpenCV_demo main.cpp)
 target_link_libraries(OpenCV_demo PRIVATE ${OpenCV_LIBRARIES})
