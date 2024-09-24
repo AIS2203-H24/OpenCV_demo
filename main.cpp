@@ -1,4 +1,5 @@
 
+#include <future>
 #include <opencv2/opencv.hpp>
 #include <thread>
 
@@ -8,6 +9,9 @@ namespace {
     bool windowClosed(const std::string &windowTitle) {
         return getWindowProperty(windowTitle, WND_PROP_VISIBLE) < 1;
     }
+
+    template<typename R>
+    bool isReady(std::future<R> const &f) { return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready; }
 
     std::vector<Rect> faceDetect(const Mat &image) {
         Mat gray;
@@ -37,6 +41,59 @@ namespace {
         }
     }
 
+    class FaceDetector {
+    public:
+        void start() {
+            thread_ = std::jthread(&FaceDetector::run, this);
+        }
+
+        void stop() {
+            stop_ = true;
+            cv_.notify_one();
+        }
+
+        std::future<std::vector<Rect>> process(const Mat &image) {
+
+            std::lock_guard lock(m_);
+            image_ = image.clone();
+            imageToProcess = true;
+
+            cv_.notify_one();
+
+            promise_ = std::promise<std::vector<Rect>>();
+            return promise_.get_future();
+        }
+
+    private:
+        Mat image_;
+        std::mutex m_;
+
+        std::condition_variable cv_;
+        std::atomic_bool stop_{false};
+        std::atomic_bool imageToProcess{false};
+
+        std::promise<std::vector<Rect>> promise_;
+
+        std::jthread thread_;
+
+        void run() {
+            while (!stop_) {
+
+                std::unique_lock lock(m_);
+                cv_.wait(lock, [this] {
+                    return imageToProcess.load() || stop_.load();
+                });
+
+                if (stop_) break;
+
+                const auto faces = faceDetect(image_);
+                promise_.set_value(faces);
+
+                imageToProcess = false;
+            }
+        }
+    };
+
 }// namespace
 
 int main() {
@@ -50,53 +107,35 @@ int main() {
     const std::string windowTitle{"Display image"};
     namedWindow(windowTitle, WINDOW_AUTOSIZE);
 
-    std::mutex imageMutex, facesMutex;
+    FaceDetector faceDetector;
+    faceDetector.start();
 
     Mat image;
-    std::atomic_bool stop{false};
-    std::vector<Rect> faces;
-    std::atomic_bool faceDetected{false};
-
-    // WARNING, while this works and seems to be thread safe, it is not a pretty solution
-
-    std::jthread detectionThread([&] {
-        while (!stop) {
-
-            std::unique_lock lck(imageMutex);
-            if (image.empty()) continue;
-            Mat faceImage = image.clone();
-            lck.unlock();
-
-            const auto faceResult = faceDetect(faceImage);
-            std::lock_guard lck2(facesMutex);
-            faces = faceResult;
-            faceDetected = true;
-        }
-    });
-
-    std::vector<Rect> facesCopy;
-
+    bool stop{false};
+    std::future<std::vector<Rect>> faces;
+    std::vector<Rect> faceResult_;
     while (!stop) {
 
-        std::unique_lock lck(imageMutex);
         capture >> image;
-        lck.unlock();
 
-        if (faceDetected) {
-            std::unique_lock lck2(facesMutex);
-            facesCopy = faces;
-            lck2.unlock();
-
-            faceDetected = false;
+        if (!faces.valid()) {
+            faces = faceDetector.process(image);
         }
 
-        drawFaces(image, facesCopy);
+        if (isReady(faces)) {
+            const auto result = faces.get();
+            if (!result.empty()) faceResult_ = result;
+            faces = {};
+        }
+
+        drawFaces(image, faceResult_);
 
         imshow(windowTitle, image);
 
         const auto key = waitKey(1);
         if (windowClosed(windowTitle) || key == 'q') {
             stop = true;
+            faceDetector.stop();
         }
     }
 
